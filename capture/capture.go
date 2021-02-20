@@ -1,13 +1,16 @@
 package capture
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os/exec"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	speech "cloud.google.com/go/speech/apiv1"
@@ -46,27 +49,44 @@ func Capture(ctx context.Context, duration time.Duration) (string, error) {
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), duration+5*time.Second)
-		defer cancel() // The cancel should be deferred so resources are cleaned up
+		defer cancel()
 
-		//cmd := exec.CommandContext(ctx, "gst-launch-1.0", "-v", "osxaudiosrc", "device=103",
-		//	"!", "audioconvert", "!", "audioresample", "!", "audio/x-raw,channels=1,rate=16000",
-		//	"!", "filesink", "location=/dev/stdout")
-		cmd := exec.CommandContext(ctx, "gst-launch-1.0", "-q", "osxaudiosrc", "device=103",
+		cmd := exec.CommandContext(ctx, "gst-launch-1.0", "-m", "osxaudiosrc", "device=103",
 			"!", "identity", fmt.Sprintf("eos-after=%d", int(duration.Seconds()*100)),
-			"!", "audioconvert", "!", "audioresample", "!", "audio/x-raw,format=S16LE,channels=1,rate=16000",
-			"!", "fdsink")
+			"!", "audioconvert", "!", "audioresample", "!", "level",
+			"!", "audio/x-raw,format=S16LE,channels=1,rate=16000",
+			"!", "filesink", "location=/dev/stderr")
+		log.Printf("Running %s", strings.Join(cmd.Args, " "))
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			log.Fatal(err)
 		}
+		go func() {
+			scanner := bufio.NewScanner(stdout)
+			// buf := make([]byte, 1)
+			// scanner.Buffer(buf, 1)
+			levelParser := regexp.MustCompile(`peak=\(GValueArray\)< -([0-9.]+) >`)
+			for scanner.Scan() {
+				m := levelParser.FindStringSubmatch(scanner.Text())
+				if len(m) > 1 {
+					volume, err := strconv.ParseFloat(m[1], 64)
+					if err != nil {
+						log.Fatal(err)
+					}
+					fmt.Println(strings.Repeat("#", int(volume)))
+				}
+			}
+
+			if err := scanner.Err(); err != nil {
+				log.Fatal(err)
+			}
+		}()
+
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
 			log.Fatal(err)
 		}
-		go func() {
-			slurp, _ := ioutil.ReadAll(stderr)
-			log.Printf("stderr: %s\n", slurp)
-		}()
+
 		if err := cmd.Start(); err != nil {
 			log.Fatal(err)
 		}
@@ -74,7 +94,7 @@ func Capture(ctx context.Context, duration time.Duration) (string, error) {
 
 		buf := make([]byte, 1024)
 		for {
-			n, err := stdout.Read(buf)
+			n, err := stderr.Read(buf)
 			if n > 0 {
 				if err := stream.Send(&speechpb.StreamingRecognizeRequest{
 					StreamingRequest: &speechpb.StreamingRecognizeRequest_AudioContent{
