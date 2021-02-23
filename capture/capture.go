@@ -17,6 +17,11 @@ import (
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
 )
 
+var (
+	idleTimeout   = 5 * time.Second
+	idleThreshold = 10 // -10dB or quieter
+)
+
 func Capture(ctx context.Context, duration time.Duration) (string, error) {
 	log.Printf("Creating speech client")
 	client, err := speech.NewClient(ctx)
@@ -29,7 +34,6 @@ func Capture(ctx context.Context, duration time.Duration) (string, error) {
 		log.Fatal(err)
 	}
 	log.Println("Configuring stream")
-	// Send the initial configuration message.
 	if err := stream.Send(&speechpb.StreamingRecognizeRequest{
 		StreamingRequest: &speechpb.StreamingRecognizeRequest_StreamingConfig{
 			StreamingConfig: &speechpb.StreamingRecognitionConfig{
@@ -63,9 +67,8 @@ func Capture(ctx context.Context, duration time.Duration) (string, error) {
 		}
 		go func() {
 			scanner := bufio.NewScanner(stdout)
-			// buf := make([]byte, 1)
-			// scanner.Buffer(buf, 1)
 			levelParser := regexp.MustCompile(`peak=\(GValueArray\)< -([0-9.]+) >`)
+			lastNotIdle := time.Now()
 			for scanner.Scan() {
 				m := levelParser.FindStringSubmatch(scanner.Text())
 				if len(m) > 1 {
@@ -73,7 +76,14 @@ func Capture(ctx context.Context, duration time.Duration) (string, error) {
 					if err != nil {
 						log.Fatal(err)
 					}
-					fmt.Println(strings.Repeat("#", int(volume)))
+					// fmt.Println(strings.Repeat("#", int(volume)))
+					if int(volume) < idleThreshold {
+						lastNotIdle = time.Now()
+					}
+					if time.Now().Sub(lastNotIdle) > idleTimeout {
+						log.Printf("Idle for %s; cancelling.", time.Now().Sub(lastNotIdle))
+						cancel()
+					}
 				}
 			}
 
