@@ -1,0 +1,33 @@
+<html>
+Last timestamp: {{.LastTime}}<br/>
+User ID: {{.UserID}}<br/>
+Channel ID: {{.ChannelID}}<br/>
+
+<h4>Users</h4>
+<table border=1>
+    <tr><th>ID</th><th>Username</th><th>Name</th><th>First name</th>
+        <th>Hand</th><th>Speaker</th><th>Actions</th></tr>
+    {{range $k, $u := .Users}}
+    <tr>
+        <td>{{ $u.Profile.UserID }}</td>
+        <td>{{ $u.Profile.Username }}</td>
+        <td>{{ $u.Profile.Name }}</td>
+        <td>{{ $u.Profile.FirstName }}</td>
+        <td>{{ $u.RaisedHand }}</td>
+        <td>{{ $u.Profile.IsSpeaker }}</td>
+        <td>
+            <a href="?action=invite&user={{ $u.Profile.UserID }}">Invite</a> |
+            <a href="?action=uninvite&user={{ $u.Profile.UserID }}">Uninvite</a>
+        </td>
+    </tr>
+    {{end}}
+</table>
+</html>
+
+<h4>Headers</h4>
+<table border=1>
+    {{range $k, $v := .RequestHeaders}}
+    <tr><td>{{ $k }}</td><td>{{ $v }}</td></tr>
+    {{end}}
+</table>
+</html>
