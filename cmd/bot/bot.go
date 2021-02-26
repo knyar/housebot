@@ -20,13 +20,13 @@ var stripSentence = regexp.MustCompile(`(.*\.).*`)
 func main() {
 	ctx := context.Background()
 
-	ch, err := ch.New("/Users/ryzh/code/housebot/mitmproxy.log")
+	ch, err := ch.New("/var/log/mitmproxy.log")
 	if err != nil {
 		log.Fatal(err)
 	}
 	http.HandleFunc("/ch", ch.HttpRoot)
-	log.Println("Listening 8080")
-	http.ListenAndServe(":8080", nil)
+	log.Println("Listening 9090")
+	log.Fatal(http.ListenAndServe(":9090", nil))
 
 	captured, err := capture.Capture(ctx, 90*time.Second)
 	if err != nil {

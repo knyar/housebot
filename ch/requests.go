@@ -2,11 +2,15 @@ package ch
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"time"
+
+	retry "github.com/avast/retry-go"
 )
 
 type inviteReq struct {
@@ -24,6 +28,58 @@ func (c *Clubhouse) canMakeRequests() error {
 	}
 	if c.ChannelID == "" {
 		return fmt.Errorf("ChannelID not set")
+	}
+	return nil
+}
+
+func (c *Clubhouse) Invite(ctx context.Context, user int64) error {
+	if err := retry.Do(func() error { return c.SpeakerRequest("invite_speaker", user) }, retry.Attempts(3)); err != nil {
+		return fmt.Errorf("could not invite speaker: %v", err)
+	}
+	for {
+		c.mu.Lock()
+		c.Users[user].RaisedHand = false
+		if u, ok := c.Users[user]; u.Profile.IsSpeaker || !ok {
+			c.mu.Unlock()
+			break
+		}
+		c.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("Invitiation for user %d expired; uninviting: %v", user,
+				c.SpeakerRequest("uninvite_speaker", user))
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	return nil
+}
+
+func (c *Clubhouse) Uninvite(ctx context.Context, user int64) error {
+	if err := retry.Do(func() error { return c.SpeakerRequest("uninvite_speaker", user) }, retry.Attempts(3)); err != nil {
+		return fmt.Errorf("could not uninvite speaker: %v", err)
+	}
+	for {
+		c.mu.Lock()
+		if u, ok := c.Users[user]; !u.Profile.IsSpeaker || !ok {
+			c.mu.Unlock()
+			break
+		}
+		c.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("Invite(): context timed out")
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	return nil
+}
+
+func (c *Clubhouse) UninviteAll(ctx context.Context) error {
+	for _, user := range c.Speakers() {
+		log.Printf("Uninviting user %d", user)
+		if err := c.Uninvite(ctx, user); err != nil {
+			return err
+		}
 	}
 	return nil
 }

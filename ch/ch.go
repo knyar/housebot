@@ -37,7 +37,7 @@ func New(logfile string) (*Clubhouse, error) {
 		RequestHeaders: make(map[string]string),
 		Users:          make(map[int64]*User),
 	}
-	c.tpl, err = template.ParseFiles("ch/index.html")
+	c.tpl, err = template.ParseFiles("../../ch/index.html")
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +80,36 @@ func (c *Clubhouse) run() {
 	if err := c.logfile.Wait(); err != nil {
 		log.Printf("ERROR: tail: %v", err)
 	}
+}
+
+func (c *Clubhouse) User(user int64) *User {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Users[user]
+}
+
+func (c *Clubhouse) Candidates() []int64 {
+	var users []int64
+	c.mu.Lock()
+	for _, u := range c.Users {
+		if u.RaisedHand {
+			users = append(users, u.Profile.UserID)
+		}
+	}
+	c.mu.Unlock()
+	return users
+}
+
+func (c *Clubhouse) Speakers() []int64 {
+	var users []int64
+	c.mu.Lock()
+	for _, u := range c.Users {
+		if u.Profile.IsSpeaker {
+			users = append(users, u.Profile.UserID)
+		}
+	}
+	c.mu.Unlock()
+	return users
 }
 
 func (c *Clubhouse) HttpRoot(w http.ResponseWriter, req *http.Request) {

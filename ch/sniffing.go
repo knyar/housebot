@@ -2,6 +2,7 @@ package ch
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"regexp"
 	"strings"
@@ -77,14 +78,6 @@ func (c *Clubhouse) updateUsers(logm *logMessage) {
 			}
 			log.Printf("User update: %+v", m.D.UserProfile)
 		}
-		if m.D.Action == "leave_channel" {
-			if u, ok := c.Users[m.D.UserID]; ok {
-				log.Printf("User left the channel: %+v", u.Profile)
-				delete(c.Users, m.D.UserID)
-			} else {
-				log.Printf("User left the channel: %d (no profile)", m.D.UserID)
-			}
-		}
 		if m.D.Action == "unraise_hands" {
 			if u, ok := c.Users[m.D.UserID]; ok {
 				log.Printf("User unraised the hand: %+v", u.Profile)
@@ -97,12 +90,28 @@ func (c *Clubhouse) updateUsers(logm *logMessage) {
 			log.Printf("User raised the hand: %+v", c.Users[m.D.UserProfile.UserID].Profile)
 			c.Users[m.D.UserProfile.UserID].RaisedHand = true
 		}
+		if m.D.Action == "add_speaker" {
+			log.Printf("Speaker added: %+v", c.Users[m.D.UserProfile.UserID].Profile)
+			c.Users[m.D.UserProfile.UserID].RaisedHand = false
+		}
 		if m.D.Action == "remove_speaker" {
 			if u, ok := c.Users[m.D.UserID]; ok {
 				log.Printf("Speaker removed: %+v", u.Profile)
 				u.Profile.IsSpeaker = false
 			} else {
 				log.Printf("Speaker removal for user %d, but profile not found", m.D.UserID)
+			}
+		}
+		if m.D.Action == "leave_channel" && fmt.Sprintf("%d", m.D.UserID) == c.UserID {
+			log.Printf("Cleaning up channel information %s", c.ChannelID)
+			c.ChannelID = ""
+			c.Users = make(map[int64]*User)
+		} else if m.D.Action == "leave_channel" {
+			if u, ok := c.Users[m.D.UserID]; ok {
+				log.Printf("User left the channel: %+v", u.Profile)
+				delete(c.Users, m.D.UserID)
+			} else {
+				log.Printf("User left the channel: %d (no profile)", m.D.UserID)
 			}
 		}
 	}
