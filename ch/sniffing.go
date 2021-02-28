@@ -2,9 +2,9 @@ package ch
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -47,10 +47,14 @@ var reHeartbeat = regexp.MustCompile(`channel/channel_user.([^.]+)\.(\d+)/heartb
 
 func (c *Clubhouse) updateIDs(m *logMessage) {
 	if m := reHeartbeat.FindStringSubmatch(m.Request.URL); len(m) > 0 {
+		var err error
 		c.ChannelID = m[1]
-		c.UserID = m[2]
-		if c.RequestHeaders["CH-UserID"] != "" && c.RequestHeaders["CH-UserID"] != c.UserID {
-			log.Printf("WARN: inconsistent user-id %s and %s", c.RequestHeaders["CH-UserID"], c.UserID)
+		c.UserID, err = strconv.ParseInt(m[2], 10, 64)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if c.RequestHeaders["CH-UserID"] != "" && c.RequestHeaders["CH-UserID"] != m[2] {
+			log.Printf("WARN: inconsistent user-id %s and %d", c.RequestHeaders["CH-UserID"], c.UserID)
 		}
 	}
 }
@@ -70,7 +74,7 @@ func (c *Clubhouse) updateUsers(logm *logMessage) {
 		if m.D.Channel != c.ChannelID {
 			log.Printf("WARN: inconsistent channel id; got %s want %s", m.D.Channel, c.ChannelID)
 		}
-		if m.D.UserProfile != nil {
+		if m.D.UserProfile != nil && c.UserID != 0 && m.D.UserProfile.UserID != c.UserID {
 			if u, ok := c.Users[m.D.UserProfile.UserID]; ok {
 				u.Profile = m.D.UserProfile
 			} else {
@@ -90,7 +94,7 @@ func (c *Clubhouse) updateUsers(logm *logMessage) {
 			log.Printf("User raised the hand: %+v", c.Users[m.D.UserProfile.UserID].Profile)
 			c.Users[m.D.UserProfile.UserID].RaisedHand = true
 		}
-		if m.D.Action == "add_speaker" {
+		if m.D.Action == "add_speaker" && m.D.UserProfile.UserID != c.UserID {
 			log.Printf("Speaker added: %+v", c.Users[m.D.UserProfile.UserID].Profile)
 			c.Users[m.D.UserProfile.UserID].RaisedHand = false
 		}
@@ -102,7 +106,7 @@ func (c *Clubhouse) updateUsers(logm *logMessage) {
 				log.Printf("Speaker removal for user %d, but profile not found", m.D.UserID)
 			}
 		}
-		if m.D.Action == "leave_channel" && fmt.Sprintf("%d", m.D.UserID) == c.UserID {
+		if m.D.Action == "leave_channel" && m.D.UserID == c.UserID {
 			log.Printf("Cleaning up channel information %s", c.ChannelID)
 			c.ChannelID = ""
 			c.Users = make(map[int64]*User)

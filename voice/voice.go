@@ -8,22 +8,27 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 
 	texttospeech "cloud.google.com/go/texttospeech/apiv1"
 	texttospeechpb "google.golang.org/genproto/googleapis/cloud/texttospeech/v1"
 )
 
-func Say(ctx context.Context, content string) error {
+func Say(ctx context.Context, device string, content string) error {
 	filename, err := tts(ctx, content)
 	if err != nil {
 		return err
 	}
-	log.Printf("Playing response...")
 	cmd := exec.CommandContext(ctx, "gst-launch-1.0", "-q",
 		"filesrc", fmt.Sprintf("location=%s", filename), "!", "decodebin",
-		"!", "audioconvert", "!", "audioresample", "!", "autoaudiosink")
-	err = cmd.Run()
-	log.Printf("Finished playing")
+		"!", "audioconvert", "!", "audioresample", "!", device)
+	log.Printf("Playing response: %s", strings.Join(cmd.Args, " "))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("Error while playing response: %s", out)
+	} else {
+		log.Printf("Finished playing")
+	}
 	return err
 }
 

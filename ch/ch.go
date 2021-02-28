@@ -24,7 +24,7 @@ type Clubhouse struct {
 	logfile        *tail.Tail
 	LastTime       time.Time
 	RequestHeaders map[string]string
-	UserID         string
+	UserID         int64
 	ChannelID      string
 	Users          map[int64]*User
 	tpl            *template.Template
@@ -37,7 +37,7 @@ func New(logfile string) (*Clubhouse, error) {
 		RequestHeaders: make(map[string]string),
 		Users:          make(map[int64]*User),
 	}
-	c.tpl, err = template.ParseFiles("../../ch/index.html")
+	c.tpl, err = template.ParseFiles("ch/index.html")
 	if err != nil {
 		return nil, err
 	}

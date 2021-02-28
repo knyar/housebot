@@ -24,14 +24,13 @@ func main() {
 	log.Println("Listening 9090")
 	go func() { log.Fatal(http.ListenAndServe(":9090", nil)) }()
 
+	// Catch up with the log.
 	time.Sleep(1 * time.Second)
 
 	for {
-		ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
-		if err := ch.UninviteAll(ctx2); err != nil {
+		if err := ch.UninviteAll(ctx, 5*time.Second); err != nil {
 			log.Printf("ERROR while uninviting all: %v", err)
 		}
-		cancel()
 
 		users := ch.Candidates()
 		if len(users) == 0 {
@@ -40,15 +39,12 @@ func main() {
 		}
 		idx := rand.Int63n(int64(len(users)))
 		u := users[idx]
-		ctx2, cancel = context.WithTimeout(ctx, 5*time.Second)
-		if err := ch.Invite(ctx2, u); err != nil {
-			cancel()
+		if err := ch.Invite(ctx, u, 5*time.Second); err != nil {
 			log.Printf("ERROR while inviting user %d: %v", u, err)
 			err = ch.SpeakerRequest("uninvite_speaker", u)
 			log.Printf("Tried to uninvite user %d: %v", u, err)
 			continue
 		}
-		cancel()
 
 		wait := 60 * time.Second
 		log.Printf("Sleeping for %v", wait)

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"log"
 	"os/exec"
@@ -22,7 +21,7 @@ var (
 	idleThreshold = 10 // -10dB or quieter
 )
 
-func Capture(ctx context.Context, duration time.Duration) (string, error) {
+func Capture(ctx context.Context, device string, duration time.Duration, done <-chan struct{}) (string, error) {
 	log.Printf("Creating speech client")
 	client, err := speech.NewClient(ctx)
 	if err != nil {
@@ -52,14 +51,18 @@ func Capture(ctx context.Context, duration time.Duration) (string, error) {
 	}
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), duration+5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), duration+2*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "gst-launch-1.0", "-m", "osxaudiosrc", "device=103",
-			"!", "identity", fmt.Sprintf("eos-after=%d", int(duration.Seconds()*100)),
+		args := []string{"-m"}
+		args = append(args, strings.Split(device, " ")...)
+		args = append(args, "!", "identity",
 			"!", "audioconvert", "!", "audioresample", "!", "level",
 			"!", "audio/x-raw,format=S16LE,channels=1,rate=16000",
 			"!", "filesink", "location=/dev/stderr")
+
+		cmd := exec.CommandContext(ctx, "gst-launch-1.0", args...)
+
 		log.Printf("Running %s", strings.Join(cmd.Args, " "))
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
@@ -83,6 +86,12 @@ func Capture(ctx context.Context, duration time.Duration) (string, error) {
 					if time.Now().Sub(lastNotIdle) > idleTimeout {
 						log.Printf("Idle for %s; cancelling.", time.Now().Sub(lastNotIdle))
 						cancel()
+					}
+					select {
+					case _, _ = <-done:
+						log.Printf("Timed out; cancelling recording.")
+						cancel()
+					default:
 					}
 				}
 			}
@@ -115,9 +124,7 @@ func Capture(ctx context.Context, duration time.Duration) (string, error) {
 				}
 			}
 			if err == io.EOF {
-				if err := cmd.Wait(); err != nil && ctx.Err() != context.DeadlineExceeded {
-					log.Fatalf("Wait() error: %v", err)
-				}
+				cmd.Wait()
 				// Nothing else to pipe, close the stream.
 				if err := stream.CloseSend(); err != nil {
 					log.Fatalf("Could not close stream: %v", err)

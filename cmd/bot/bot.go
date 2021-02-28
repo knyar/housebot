@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"regexp"
 	"strings"
@@ -18,35 +20,91 @@ import (
 var stripSentence = regexp.MustCompile(`(.*\.).*`)
 
 func main() {
+	stageTime := flag.Duration("stage_time", 60*time.Second, "how long each speaker gets on stage")
+	mitmLog := flag.String("mitm_log", "/var/log/mitmproxy.log", "path to mitmdump-generated log of Clubhouse traffic")
+	soundIn := flag.String("sound_in", "alsasrc", "gstreamer input")
+	soundOut := flag.String("sound_out", "autoaudiosink", "gstreamer output")
+	flag.Parse()
+
 	ctx := context.Background()
 
-	ch, err := ch.New("/var/log/mitmproxy.log")
+	ch, err := ch.New(*mitmLog)
 	if err != nil {
 		log.Fatal(err)
 	}
 	http.HandleFunc("/ch", ch.HttpRoot)
 	log.Println("Listening 9090")
-	log.Fatal(http.ListenAndServe(":9090", nil))
+	go func() { log.Fatal(http.ListenAndServe(":9090", nil)) }()
 
-	captured, err := capture.Capture(ctx, 90*time.Second)
-	if err != nil {
-		log.Fatal(err)
+	// Catch up with the log.
+	time.Sleep(1 * time.Second)
+
+	if err := ch.UninviteAll(ctx, 5*time.Second); err != nil {
+		log.Printf("ERROR while uninviting all: %v", err)
 	}
 
-	// Add a dot at the end if it does not exist.
-	captured = fmt.Sprintf("%s.", strings.TrimSuffix(captured, "."))
-
-	resp, err := gpt3.Respond(ctx, captured, 90*time.Second)
-	if err != nil {
-		log.Fatal(err)
+	responses := []string{
+		// "Just a reminder. The rules of this room are simple. Each speaker gets the stage for one minute; next speaker is chosen randomly amongst people who raised their hand. Thanks for joining us.",
 	}
+	for {
+		if len(responses) > 0 {
+			for _, resp := range responses {
+				err = voice.Say(ctx, *soundOut, resp)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+			responses = nil
+		}
 
-	// Strip last sentence that is likely to be incomplete.
-	resp = stripSentence.ReplaceAllString(resp, "$1")
+		users := ch.Candidates()
+		if len(users) == 0 {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		idx := rand.Int63n(int64(len(users)))
+		u := users[idx]
+		if err := ch.Invite(ctx, u, 5*time.Second); err != nil {
+			log.Printf("ERROR while inviting user %d: %v", u, err)
+			err = ch.SpeakerRequest("uninvite_speaker", u)
+			log.Printf("Tried to uninvite user %d: %v", u, err)
+			continue
+		}
 
-	// fmt.Println(resp)
-	err = voice.Say(ctx, resp)
-	if err != nil {
-		log.Fatal(err)
+		log.Printf("Capturing audio for %v", stageTime)
+		captured := make(chan string, 1)
+		done := make(chan struct{})
+		// TODO: implement cancellation on done
+		go func() {
+			c, err := capture.Capture(ctx, *soundIn, *stageTime, done)
+			if err != nil {
+				log.Fatal(err)
+			}
+			captured <- c
+		}()
+
+		deadline := time.Now().Add(*stageTime)
+		for deadline.Sub(time.Now()) > 0 {
+			if user := ch.User(u); user == nil || !user.Profile.IsSpeaker {
+				log.Printf("Speaker %d left early; cancelling recording", u)
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		close(done)
+
+		if err := ch.UninviteAll(ctx, 5*time.Second); err != nil {
+			log.Printf("ERROR while uninviting all: %v", err)
+		}
+
+		c := <-captured
+		c = fmt.Sprintf("%s.", strings.TrimSuffix(c, "."))
+		resp, err := gpt3.Respond(ctx, c, *stageTime)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// Strip last sentence that is likely to be incomplete.
+		resp = stripSentence.ReplaceAllString(resp, "$1")
+		responses = append(responses, resp)
 	}
 }

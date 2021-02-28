@@ -21,8 +21,9 @@ func Respond(ctx context.Context, input string, dur time.Duration) (string, erro
 		Prompt:           fmt.Sprintf("%s\n\n%s\n\n", prompt, input),
 		MaxTokens:        int(3.6 * dur.Seconds()),
 		Temperature:      0.8,
-		FrequencyPenalty: 0.8,
-		PresencePenalty:  0.5,
+		TopP:             1,
+		FrequencyPenalty: 0,
+		PresencePenalty:  0.6,
 	}
 
 	log.Printf("Sending request %+v", req)

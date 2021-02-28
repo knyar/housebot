@@ -32,7 +32,9 @@ func (c *Clubhouse) canMakeRequests() error {
 	return nil
 }
 
-func (c *Clubhouse) Invite(ctx context.Context, user int64) error {
+func (c *Clubhouse) Invite(ctx context.Context, user int64, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	if err := retry.Do(func() error { return c.SpeakerRequest("invite_speaker", user) }, retry.Attempts(3)); err != nil {
 		return fmt.Errorf("could not invite speaker: %v", err)
 	}
@@ -74,7 +76,9 @@ func (c *Clubhouse) Uninvite(ctx context.Context, user int64) error {
 	return nil
 }
 
-func (c *Clubhouse) UninviteAll(ctx context.Context) error {
+func (c *Clubhouse) UninviteAll(ctx context.Context, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	for _, user := range c.Speakers() {
 		log.Printf("Uninviting user %d", user)
 		if err := c.Uninvite(ctx, user); err != nil {
@@ -125,7 +129,7 @@ func (c *Clubhouse) SpeakerRequest(method string, user int64) error {
 	}
 
 	if !r.Success {
-		return fmt.Errorf("unsuccessful response: %+v", body)
+		return fmt.Errorf("unsuccessful response: %s", string(body))
 	}
 	return nil
 }
