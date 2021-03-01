@@ -15,26 +15,24 @@ import (
 )
 
 func Say(ctx context.Context, device string, content string) error {
-	filename, err := tts(ctx, content)
+	filename, err := Tts(ctx, content)
 	if err != nil {
 		return err
 	}
 	cmd := exec.CommandContext(ctx, "gst-launch-1.0", "-q",
 		"filesrc", fmt.Sprintf("location=%s", filename), "!", "decodebin",
 		"!", "audioconvert", "!", "audioresample", "!", device)
-	log.Printf("Playing response: %s", strings.Join(cmd.Args, " "))
+	log.Printf("Playing response: %s (%s)", strings.Join(cmd.Args, " "), content)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Printf("Error while playing response: %s", out)
-	} else {
-		log.Printf("Finished playing")
 	}
 	return err
 }
 
-func tts(ctx context.Context, content string) (string, error) {
+func Tts(ctx context.Context, content string) (string, error) {
 	hash := fmt.Sprintf("%x", sha1.Sum([]byte(content)))
-	filename := fmt.Sprintf("cache/%s.ogg", hash)
+	filename := fmt.Sprintf("data/tts/%s.ogg", hash)
 
 	if _, err := os.Stat(filename); !os.IsNotExist(err) {
 		return filename, nil
@@ -50,12 +48,13 @@ func tts(ctx context.Context, content string) (string, error) {
 		},
 		Voice: &texttospeechpb.VoiceSelectionParams{
 			LanguageCode: "en-AU",
-			Name:         "en-AU-Standard-D",
+			Name:         "en-AU-Wavenet-D",
 			SsmlGender:   texttospeechpb.SsmlVoiceGender_MALE,
 		},
 		AudioConfig: &texttospeechpb.AudioConfig{
 			AudioEncoding: texttospeechpb.AudioEncoding_OGG_OPUS,
-			SpeakingRate:  0.8,
+			SpeakingRate:  0.75,
+			Pitch:         -6,
 		},
 	}
 

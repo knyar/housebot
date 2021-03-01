@@ -1,15 +1,11 @@
 package capture
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"io"
 	"log"
-	"os/exec"
-	"regexp"
-	"strconv"
-	"strings"
+	"sort"
 	"time"
 
 	speech "cloud.google.com/go/speech/apiv1"
@@ -18,21 +14,18 @@ import (
 
 var (
 	idleTimeout   = 5 * time.Second
-	idleThreshold = 10 // -10dB or quieter
+	idleThreshold = 20 // -20dB or quieter
 )
 
-func Capture(ctx context.Context, device string, duration time.Duration, done <-chan struct{}) (string, error) {
-	log.Printf("Creating speech client")
+func (c *Capturer) Capture(ctx context.Context, done <-chan struct{}) (string, error) {
 	client, err := speech.NewClient(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println("Creating stream")
 	stream, err := client.StreamingRecognize(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println("Configuring stream")
 	if err := stream.Send(&speechpb.StreamingRecognizeRequest{
 		StreamingRequest: &speechpb.StreamingRecognizeRequest_StreamingConfig{
 			StreamingConfig: &speechpb.StreamingRecognitionConfig{
@@ -42,7 +35,13 @@ func Capture(ctx context.Context, device string, duration time.Duration, done <-
 					LanguageCode:               "en-US",
 					EnableAutomaticPunctuation: true,
 					ProfanityFilter:            false,
+					Model:                      "phone_call",
 					UseEnhanced:                true,
+					Metadata: &speechpb.RecognitionMetadata{
+						InteractionType:     speechpb.RecognitionMetadata_PRESENTATION,
+						OriginalMediaType:   speechpb.RecognitionMetadata_AUDIO,
+						RecordingDeviceType: speechpb.RecognitionMetadata_PHONE_LINE,
+					},
 				},
 			},
 		},
@@ -50,91 +49,49 @@ func Capture(ctx context.Context, device string, duration time.Duration, done <-
 		log.Fatal(err)
 	}
 
+	sound, volume, cancel := c.Consume()
+
+	// Cancel when done is closed.
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), duration+2*time.Second)
-		defer cancel()
+		<-done
+		cancel()
+	}()
 
-		args := []string{"-m"}
-		args = append(args, strings.Split(device, " ")...)
-		args = append(args, "!", "identity",
-			"!", "audioconvert", "!", "audioresample", "!", "level",
-			"!", "audio/x-raw,format=S16LE,channels=1,rate=16000",
-			"!", "filesink", "location=/dev/stderr")
-
-		cmd := exec.CommandContext(ctx, "gst-launch-1.0", args...)
-
-		log.Printf("Running %s", strings.Join(cmd.Args, " "))
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			log.Fatal(err)
+	// Track volume
+	go func() {
+		lastNotIdle := time.Now()
+		var volumes []float64
+		for vol := range volume {
+			volumes = append(volumes, vol)
+			if int(vol) < idleThreshold {
+				lastNotIdle = time.Now()
+			}
+			if time.Now().Sub(lastNotIdle) > idleTimeout {
+				log.Printf("Idle for %s; cancelling.", time.Now().Sub(lastNotIdle))
+				cancel()
+			}
 		}
-		go func() {
-			scanner := bufio.NewScanner(stdout)
-			levelParser := regexp.MustCompile(`peak=\(GValueArray\)< -([0-9.]+) >`)
-			lastNotIdle := time.Now()
-			for scanner.Scan() {
-				m := levelParser.FindStringSubmatch(scanner.Text())
-				if len(m) > 1 {
-					volume, err := strconv.ParseFloat(m[1], 64)
-					if err != nil {
-						log.Fatal(err)
-					}
-					// fmt.Println(strings.Repeat("#", int(volume)))
-					if int(volume) < idleThreshold {
-						lastNotIdle = time.Now()
-					}
-					if time.Now().Sub(lastNotIdle) > idleTimeout {
-						log.Printf("Idle for %s; cancelling.", time.Now().Sub(lastNotIdle))
-						cancel()
-					}
-					select {
-					case _, _ = <-done:
-						log.Printf("Timed out; cancelling recording.")
-						cancel()
-					default:
-					}
-				}
-			}
+		sort.Float64s(volumes)
+		log.Printf("Captured volumes: min %f, max %f, p50 %f, p10 %f",
+			volumes[0], volumes[len(volumes)-1], volumes[len(volumes)/2], volumes[len(volumes)/10])
+	}()
 
-			if err := scanner.Err(); err != nil {
-				log.Fatal(err)
+	// Read audio stream.
+	go func() {
+		len := 0
+		for buf := range sound {
+			len = len + 1
+			if err := stream.Send(&speechpb.StreamingRecognizeRequest{
+				StreamingRequest: &speechpb.StreamingRecognizeRequest_AudioContent{
+					AudioContent: buf,
+				},
+			}); err != nil {
+				log.Printf("Could not send audio: %v", err)
 			}
-		}()
-
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			log.Fatal(err)
 		}
-
-		if err := cmd.Start(); err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Speak for %v\n", duration)
-
-		buf := make([]byte, 1024)
-		for {
-			n, err := stderr.Read(buf)
-			if n > 0 {
-				if err := stream.Send(&speechpb.StreamingRecognizeRequest{
-					StreamingRequest: &speechpb.StreamingRecognizeRequest_AudioContent{
-						AudioContent: buf[:n],
-					},
-				}); err != nil {
-					log.Printf("Could not send audio: %v", err)
-				}
-			}
-			if err == io.EOF {
-				cmd.Wait()
-				// Nothing else to pipe, close the stream.
-				if err := stream.CloseSend(); err != nil {
-					log.Fatalf("Could not close stream: %v", err)
-				}
-				return
-			}
-			if err != nil {
-				log.Printf("Could not read from stdin: %v", err)
-				continue
-			}
+		log.Printf("Sent %d chunks of audio to the speach API", len)
+		if err := stream.CloseSend(); err != nil {
+			log.Fatalf("Could not close stream: %v", err)
 		}
 	}()
 

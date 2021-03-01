@@ -40,8 +40,10 @@ func (c *Clubhouse) Invite(ctx context.Context, user int64, timeout time.Duratio
 	}
 	for {
 		c.mu.Lock()
-		c.Users[user].RaisedHand = false
 		if u, ok := c.Users[user]; u.Profile.IsSpeaker || !ok {
+			if ok {
+				c.Users[user].RaisedHand = false
+			}
 			c.mu.Unlock()
 			break
 		}

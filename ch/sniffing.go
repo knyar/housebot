@@ -3,9 +3,12 @@ package ch
 import (
 	"encoding/json"
 	"log"
+	"math"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type logMessage struct {
@@ -43,6 +46,13 @@ type pubnubMessage struct {
 	} `json:"m"`
 }
 
+var customLogger = log.New(os.Stderr, "", 0)
+
+func l(ts time.Time, format string, args ...interface{}) {
+	customLogger.SetPrefix(ts.Format("2006-01-02 15:04:05_"))
+	customLogger.Printf(format, args...)
+}
+
 var reHeartbeat = regexp.MustCompile(`channel/channel_user.([^.]+)\.(\d+)/heartbeat`)
 
 func (c *Clubhouse) updateIDs(m *logMessage) {
@@ -70,9 +80,11 @@ func (c *Clubhouse) updateUsers(logm *logMessage) {
 	}
 	// log.Printf("PubnubMessage string: %s", logm.Response.Text)
 	// log.Printf("PubnubMessage struct: %+v", msg)
+	sec, dec := math.Modf(logm.Ts)
+	ts := time.Unix(int64(sec), int64(dec*(1e9)))
 	for _, m := range msg.M {
 		if m.D.Channel != c.ChannelID {
-			log.Printf("WARN: inconsistent channel id; got %s want %s", m.D.Channel, c.ChannelID)
+			l(ts, "WARN: inconsistent channel id; got %s want %s", m.D.Channel, c.ChannelID)
 		}
 		if m.D.UserProfile != nil && c.UserID != 0 && m.D.UserProfile.UserID != c.UserID {
 			if u, ok := c.Users[m.D.UserProfile.UserID]; ok {
@@ -80,42 +92,42 @@ func (c *Clubhouse) updateUsers(logm *logMessage) {
 			} else {
 				c.Users[m.D.UserProfile.UserID] = &User{Profile: m.D.UserProfile}
 			}
-			log.Printf("User update: %+v", m.D.UserProfile)
+			l(ts, "User update: %+v", m.D.UserProfile)
 		}
 		if m.D.Action == "unraise_hands" {
 			if u, ok := c.Users[m.D.UserID]; ok {
-				log.Printf("User unraised the hand: %+v", u.Profile)
+				l(ts, "User unraised the hand: %+v", u.Profile)
 				u.RaisedHand = false
 			} else {
-				log.Printf("User %d unraised the hand, but profile not found", m.D.UserID)
+				l(ts, "User %d unraised the hand, but profile not found", m.D.UserID)
 			}
 		}
 		if m.D.Action == "raise_hands" {
-			log.Printf("User raised the hand: %+v", c.Users[m.D.UserProfile.UserID].Profile)
+			l(ts, "User raised the hand: %+v", c.Users[m.D.UserProfile.UserID].Profile)
 			c.Users[m.D.UserProfile.UserID].RaisedHand = true
 		}
 		if m.D.Action == "add_speaker" && m.D.UserProfile.UserID != c.UserID {
-			log.Printf("Speaker added: %+v", c.Users[m.D.UserProfile.UserID].Profile)
+			l(ts, "Speaker added: %+v", c.Users[m.D.UserProfile.UserID].Profile)
 			c.Users[m.D.UserProfile.UserID].RaisedHand = false
 		}
 		if m.D.Action == "remove_speaker" {
 			if u, ok := c.Users[m.D.UserID]; ok {
-				log.Printf("Speaker removed: %+v", u.Profile)
+				l(ts, "Speaker removed: %+v", u.Profile)
 				u.Profile.IsSpeaker = false
 			} else {
-				log.Printf("Speaker removal for user %d, but profile not found", m.D.UserID)
+				l(ts, "Speaker removal for user %d, but profile not found", m.D.UserID)
 			}
 		}
 		if m.D.Action == "leave_channel" && m.D.UserID == c.UserID {
-			log.Printf("Cleaning up channel information %s", c.ChannelID)
+			l(ts, "Cleaning up channel information %s", c.ChannelID)
 			c.ChannelID = ""
 			c.Users = make(map[int64]*User)
 		} else if m.D.Action == "leave_channel" {
 			if u, ok := c.Users[m.D.UserID]; ok {
-				log.Printf("User left the channel: %+v", u.Profile)
+				l(ts, "User left the channel: %+v", u.Profile)
 				delete(c.Users, m.D.UserID)
 			} else {
-				log.Printf("User left the channel: %d (no profile)", m.D.UserID)
+				l(ts, "User left the channel: %d (no profile)", m.D.UserID)
 			}
 		}
 	}
