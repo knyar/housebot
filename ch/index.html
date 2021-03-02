@@ -3,6 +3,11 @@ Last timestamp: {{.LastTime}}<br/>
 User ID: {{.UserID}}<br/>
 Channel ID: {{.ChannelID}}<br/>
 
+{{if .VoiceCancelFunc}}
+<h4>Currently speaking</h4>
+<a href="?action=cancel_voice">Cancel</a>
+{{end}}
+
 <h4>Users</h4>
 <table border=1>
     <tr><th>ID</th><th>Username</th><th>Name</th><th>First name</th>

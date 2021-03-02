@@ -18,19 +18,30 @@ func Respond(ctx context.Context, inputs []string, dur time.Duration) (string, e
 	dur = dur + 10*time.Second
 	c := gogpt.NewClient(apiKey)
 
-	var buffer bytes.Buffer
-	for _, i := range inputs {
-		buffer.WriteString(fmt.Sprintf("Text: %s\n\n", i))
+	// Single input: pretend it's a dialog with a friend.
+	prompt := fmt.Sprintf(
+		"You: Hello! How are you?\nFriend: Pretty good. What is on your mind today?\nYou: %s\nFriend:",
+		inputs[0])
+	stop := "You:"
+
+	// Multiple inputs: continue a text with several paragraphs.
+	if len(inputs) > 1 {
+		var buffer bytes.Buffer
+		for _, i := range inputs {
+			buffer.WriteString(fmt.Sprintf("%s\n\n", i))
+		}
+		prompt = buffer.String()
+		stop = "Text:"
 	}
 
 	req := gogpt.CompletionRequest{
-		Prompt:           fmt.Sprintf("%sText:", buffer.String()),
+		Prompt:           prompt,
 		MaxTokens:        int(3.6 * dur.Seconds()),
 		Temperature:      0.8,
 		TopP:             1,
 		FrequencyPenalty: 0,
 		PresencePenalty:  0.6,
-		Stop:             []string{"Text:"},
+		Stop:             []string{stop},
 	}
 
 	log.Printf("Sending request %+v", req)

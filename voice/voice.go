@@ -19,15 +19,18 @@ func Say(ctx context.Context, device string, content string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, "gst-launch-1.0", "-q",
+	args := []string{"-q",
 		"filesrc", fmt.Sprintf("location=%s", filename), "!", "decodebin",
-		"!", "audioconvert", "!", "audioresample", "!", device)
+		"!", "audioconvert", "!", "audioresample",
+		"!"}
+	args = append(args, strings.Split(device, " ")...)
+	cmd := exec.CommandContext(ctx, "gst-launch-1.0", args...)
 	log.Printf("Playing response: %s (%s)", strings.Join(cmd.Args, " "), content)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("Error while playing response: %s", out)
+		return fmt.Errorf("Error while playing response: %s", out)
 	}
-	return err
+	return nil
 }
 
 func Tts(ctx context.Context, content string) (string, error) {

@@ -40,7 +40,7 @@ func (c *Clubhouse) Invite(ctx context.Context, user int64, timeout time.Duratio
 	}
 	for {
 		c.mu.Lock()
-		if u, ok := c.Users[user]; u.Profile.IsSpeaker || !ok {
+		if u, ok := c.Users[user]; !ok || u.Profile.IsSpeaker {
 			if ok {
 				c.Users[user].RaisedHand = false
 			}
@@ -50,8 +50,8 @@ func (c *Clubhouse) Invite(ctx context.Context, user int64, timeout time.Duratio
 		c.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("Invitiation for user %d expired; uninviting: %v", user,
-				c.SpeakerRequest("uninvite_speaker", user))
+			c.Users[user].RaisedHand = false
+			return fmt.Errorf("Invitiation for user %d expired", user)
 		case <-time.After(50 * time.Millisecond):
 		}
 	}

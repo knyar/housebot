@@ -103,8 +103,12 @@ func (c *Clubhouse) updateUsers(logm *logMessage) {
 			}
 		}
 		if m.D.Action == "raise_hands" {
-			l(ts, "User raised the hand: %+v", c.Users[m.D.UserProfile.UserID].Profile)
-			c.Users[m.D.UserProfile.UserID].RaisedHand = true
+			if time.Now().Sub(ts) > time.Second {
+				l(ts, "User raised the hand: %+v (OLD)", c.Users[m.D.UserProfile.UserID].Profile)
+			} else {
+				l(ts, "User raised the hand: %+v", c.Users[m.D.UserProfile.UserID].Profile)
+				c.Users[m.D.UserProfile.UserID].RaisedHand = true
+			}
 		}
 		if m.D.Action == "add_speaker" && m.D.UserProfile.UserID != c.UserID {
 			l(ts, "Speaker added: %+v", c.Users[m.D.UserProfile.UserID].Profile)

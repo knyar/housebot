@@ -64,10 +64,14 @@ func main() {
 	for {
 		if len(responses) > 0 {
 			for _, resp := range responses {
-				err = voice.Say(ctx, *soundOut, resp)
+				ctx2, cancel := context.WithCancel(ctx)
+				ch.SetVoiceCancelFunc(cancel)
+				err = voice.Say(ctx2, *soundOut, resp)
 				if err != nil {
-					log.Fatal(err)
+					log.Printf("ERROR: %v", err)
 				}
+				cancel()
+				ch.SetVoiceCancelFunc(nil)
 			}
 			responses = nil
 		}
@@ -120,6 +124,7 @@ func main() {
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
+			time.Sleep(1 * time.Second)
 			err = voice.Say(ctx, *soundOut, resp)
 			if err != nil {
 				log.Fatal(err)

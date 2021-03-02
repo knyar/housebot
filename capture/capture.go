@@ -38,7 +38,7 @@ func (c *Capturer) Capture(ctx context.Context, done <-chan struct{}) (string, e
 					Model:                      "phone_call",
 					UseEnhanced:                true,
 					Metadata: &speechpb.RecognitionMetadata{
-						InteractionType:     speechpb.RecognitionMetadata_PRESENTATION,
+						InteractionType:     speechpb.RecognitionMetadata_PHONE_CALL,
 						OriginalMediaType:   speechpb.RecognitionMetadata_AUDIO,
 						RecordingDeviceType: speechpb.RecognitionMetadata_PHONE_LINE,
 					},

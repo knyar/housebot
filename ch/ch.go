@@ -1,6 +1,7 @@
 package ch
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -21,14 +22,15 @@ type User struct {
 	RaisedHand bool
 }
 type Clubhouse struct {
-	logfile        *tail.Tail
-	LastTime       time.Time
-	RequestHeaders map[string]string
-	UserID         int64
-	ChannelID      string
-	Users          map[int64]*User
-	tpl            *template.Template
-	mu             sync.Mutex
+	logfile         *tail.Tail
+	LastTime        time.Time
+	RequestHeaders  map[string]string
+	UserID          int64
+	ChannelID       string
+	Users           map[int64]*User
+	VoiceCancelFunc context.CancelFunc
+	tpl             *template.Template
+	mu              sync.Mutex
 }
 
 func New(logfile string) (*Clubhouse, error) {
@@ -112,9 +114,22 @@ func (c *Clubhouse) Speakers() []int64 {
 	return users
 }
 
+func (c *Clubhouse) SetVoiceCancelFunc(cancel context.CancelFunc) {
+	c.mu.Lock()
+	c.VoiceCancelFunc = cancel
+	c.mu.Unlock()
+}
+
 func (c *Clubhouse) HttpRoot(w http.ResponseWriter, req *http.Request) {
 	params := req.URL.Query()
 	if action, ok := params["action"]; ok {
+		if action[0] == "cancel_voice" {
+			c.mu.Lock()
+			if c.VoiceCancelFunc != nil {
+				c.VoiceCancelFunc()
+			}
+			c.mu.Unlock()
+		}
 		if action[0] == "invite" || action[0] == "uninvite" {
 			if user, ok := params["user"]; ok {
 				userID, err := strconv.ParseInt(user[0], 10, 64)
