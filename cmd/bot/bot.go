@@ -27,6 +27,7 @@ var thanks = []string{
 
 func main() {
 	stageTime := flag.Duration("stage_time", 60*time.Second, "how long each speaker gets on stage")
+	responseTime := flag.Duration("response_time", 45*time.Second, "how long each speaker gets on stage")
 	mitmLog := flag.String("mitm_log", "/var/log/mitmproxy.log", "path to mitmdump-generated log of Clubhouse traffic")
 	soundIn := flag.String("sound_in", "alsasrc", "gstreamer input")
 	soundOut := flag.String("sound_out", "autoaudiosink", "gstreamer output")
@@ -137,7 +138,7 @@ func main() {
 		humanText = append(humanText, c)
 
 		if len(humanText) >= *responseFrequncy || len(ch.Candidates()) == 0 {
-			resp, err := gpt3.Respond(ctx, humanText, *stageTime)
+			resp, err := gpt3.Respond(ctx, humanText, *responseTime)
 			if err != nil {
 				log.Fatal(err)
 			}
