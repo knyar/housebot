@@ -94,8 +94,11 @@ func main() {
 		humansSpoken = humansSpoken + 1
 
 		// Pre-fetch a 'thanks' response.
-		resp := fmt.Sprintf(thanks[rand.Intn(len(thanks))], ch.User(u).Profile.FirstName)
-		go func() { voice.Tts(ctx, resp) }()
+		var resp string
+		if user := ch.User(u); user != nil {
+			resp = fmt.Sprintf(thanks[rand.Intn(len(thanks))], user.Profile.FirstName)
+			go func() { voice.Tts(ctx, resp) }()
+		}
 
 		log.Printf("Capturing audio for %v", stageTime)
 		captured := make(chan string, 1)
@@ -123,15 +126,17 @@ func main() {
 		}
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			time.Sleep(1 * time.Second)
-			err = voice.Say(ctx, *soundOut, resp)
-			if err != nil {
-				log.Fatal(err)
-			}
-			wg.Done()
-		}()
+		if resp != "" {
+			wg.Add(1)
+			go func() {
+				time.Sleep(1 * time.Second)
+				err = voice.Say(ctx, *soundOut, resp)
+				if err != nil {
+					log.Fatal(err)
+				}
+				wg.Done()
+			}()
+		}
 
 		c := <-captured
 		c = fmt.Sprintf("%s.", strings.TrimSuffix(c, "."))
