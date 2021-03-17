@@ -3,3 +3,5 @@
 livecaption
 data
 mitmproxy.log
+run.sh
+*.csv

@@ -27,7 +27,7 @@ var thanks = []string{
 
 func main() {
 	stageTime := flag.Duration("stage_time", 60*time.Second, "how long each speaker gets on stage")
-	responseTime := flag.Duration("response_time", 45*time.Second, "how long each speaker gets on stage")
+	responseTime := flag.Duration("response_time", 40*time.Second, "response length")
 	mitmLog := flag.String("mitm_log", "/var/log/mitmproxy.log", "path to mitmdump-generated log of Clubhouse traffic")
 	soundIn := flag.String("sound_in", "alsasrc", "gstreamer input")
 	soundOut := flag.String("sound_out", "autoaudiosink", "gstreamer output")

@@ -10,6 +10,10 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/polly"
+
 	texttospeech "cloud.google.com/go/texttospeech/apiv1"
 	texttospeechpb "google.golang.org/genproto/googleapis/cloud/texttospeech/v1"
 )
@@ -21,7 +25,7 @@ func Say(ctx context.Context, device string, content string) error {
 	}
 	args := []string{"-q",
 		"filesrc", fmt.Sprintf("location=%s", filename), "!", "decodebin",
-		"!", "audioconvert", "!", "audioresample",
+		"!", "audioconvert", "!", "audioresample", "!", "pitch", "pitch=0.95",
 		"!"}
 	args = append(args, strings.Split(device, " ")...)
 	cmd := exec.CommandContext(ctx, "gst-launch-1.0", args...)
@@ -41,9 +45,46 @@ func Tts(ctx context.Context, content string) (string, error) {
 		return filename, nil
 	}
 
-	client, err := texttospeech.NewClient(ctx)
+	data, err := AmazonTts(ctx, content)
 	if err != nil {
 		return "", err
+	}
+
+	err = ioutil.WriteFile(filename, data, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Audio content written to file: %v\n", filename)
+
+	return filename, nil
+}
+
+func AmazonTts(ctx context.Context, content string) ([]byte, error) {
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		Config:            aws.Config{Region: aws.String("eu-central-1")},
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+	svc := polly.New(sess)
+	input := &polly.SynthesizeSpeechInput{
+		Engine:       aws.String("neural"),
+		LanguageCode: aws.String("en-GB"),
+		OutputFormat: aws.String("ogg_vorbis"),
+		Text:         aws.String(content),
+		VoiceId:      aws.String("Brian"),
+	}
+
+	output, err := svc.SynthesizeSpeech(input)
+	if err != nil {
+		return nil, err
+	}
+
+	return ioutil.ReadAll(output.AudioStream)
+}
+
+func GoogleTts(ctx context.Context, content string) ([]byte, error) {
+	client, err := texttospeech.NewClient(ctx)
+	if err != nil {
+		return nil, err
 	}
 	req := texttospeechpb.SynthesizeSpeechRequest{
 		Input: &texttospeechpb.SynthesisInput{
@@ -63,15 +104,8 @@ func Tts(ctx context.Context, content string) (string, error) {
 
 	resp, err := client.SynthesizeSpeech(ctx, &req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// The resp's AudioContent is binary.
-	err = ioutil.WriteFile(filename, resp.AudioContent, 0644)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("Audio content written to file: %v\n", filename)
-
-	return filename, nil
+	return resp.AudioContent, nil
 }

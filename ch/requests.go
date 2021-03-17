@@ -64,7 +64,7 @@ func (c *Clubhouse) Uninvite(ctx context.Context, user int64) error {
 	}
 	for {
 		c.mu.Lock()
-		if u, ok := c.Users[user]; !u.Profile.IsSpeaker || !ok {
+		if u, ok := c.Users[user]; !ok || !u.Profile.IsSpeaker {
 			c.mu.Unlock()
 			break
 		}
