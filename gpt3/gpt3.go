@@ -11,7 +11,8 @@ import (
 	gogpt "github.com/sashabaranov/go-gpt3"
 )
 
-const apiKey = "sk-Tv4pAfYXuCg6gbtXbLVviabjnROT8RlZ9ZZlSchz"
+// Note that this key has been revoked.
+const apiKey = "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 func Respond(ctx context.Context, inputs []string, dur time.Duration) (string, error) {
 	// Add 10 seconds to generate one last sentence that we will crop.
