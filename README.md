@@ -1,8 +1,5 @@
-## Go
+## Housebot
 
+Clubhouse room voice bot.
 
-## Sniffing traffic
-
-## Audio
-
-* Install `gstreamer1.0-plugins-base-apps`
+https://knyar.net/stuff/matt-the-clubhouse-bot/
